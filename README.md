@@ -42,9 +42,14 @@ python -m seo crawl --dry-run  # crawl and print findings, store nothing
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill it in.
-2. `pip install -r requirements.txt`
-3. `python -m seo crawl --dry-run` to see it work with no credentials.
+1. Copy `.env.example` to `.env` and fill it in (optional for a dry run).
+2. Create a private Python environment once, then install:
+   ```
+   python3 -m venv .venv
+   source .venv/bin/activate      # run this each time you open a new terminal
+   pip install -r requirements.txt
+   ```
+3. `python3 -m seo crawl --dry-run --limit 40` to see it work with no credentials.
 4. For Search Console: create a Google Cloud service account, enable the
    Search Console API, add the service account's email as a user on the
    labeffects.com property in Search Console, and paste the JSON key into

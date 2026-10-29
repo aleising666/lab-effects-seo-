@@ -61,7 +61,10 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
         if len(bare_title) > TITLE_MAX:
             F("title-long", LOW, f"Title is {len(bare_title)} characters before the brand suffix (aim under {TITLE_MAX}): '{bare_title}'")
         elif len(bare_title) < TITLE_MIN:
-            F("title-short", LOW, f"Title is only {len(bare_title)} characters: '{bare_title}'")
+            if pg.page_type == "product":
+                F("title-short", LOW, f"Product title tag is just the name '{bare_title}'; add what it is (e.g. '{bare_title} Natural Terpene Flavor') in the SEO title")
+            else:
+                F("title-short", LOW, f"Title is only {len(bare_title)} characters: '{bare_title}'")
         if pg.page_type == "collection" and re.search(r"\b(bontanical|terpens|terpenese)\b", bare_title, re.I):
             F("title-typo", HIGH, f"Likely typo in title: '{bare_title}'")
 
@@ -89,11 +92,19 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
           f"Only {pg.word_count} words of visible copy (expect at least {limit} for a {pg.page_type})")
     if pg.page_type == "article" and len(pg.internal_links) < MIN_BODY_LINKS["article"]:
         F("few-internal-links", MEDIUM, f"Only {len(pg.internal_links)} internal link(s) in the body; add links to collections, products or related posts")
-    if "—" in pg.body_text or "—" in pg.title or "—" in pg.meta_description:
-        F("em-dash", LOW, "Em dash in copy (house style: use a comma)")
-    hits = sorted(set(m.group(0).lower() for m in BRITISH.finditer(pg.body_text)))
-    if hits:
-        F("british-spelling", LOW, f"British spelling in copy: {hits[:6]}")
+    # Copy-style checks run where the copy is editable in admin (posts,
+    # collections, pages, home). Product pages get their em dashes from the
+    # theme templates, which is a theme fix, not a copy fix.
+    if pg.page_type != "product":
+        for where, text in (("title", pg.title), ("meta description", pg.meta_description), ("copy", pg.body_text)):
+            i = text.find("—")
+            if i >= 0:
+                snippet = text[max(0, i - 40): i + 40].replace("\n", " ")
+                F("em-dash", LOW, f"Em dash in {where} (house style: use a comma): …{snippet}…")
+                break
+        hits = sorted(set(m.group(0).lower() for m in BRITISH.finditer(pg.body_text)))
+        if hits:
+            F("british-spelling", LOW, f"British spelling in copy: {hits[:6]}")
     for ph in pg.placeholders[:5]:
         F("placeholder-text", HIGH, f"Bracketed placeholder printing on the page: {ph}")
     if re.search(r"\bover (50|55|105)\b|\b(40|100)\+ ", pg.body_text):

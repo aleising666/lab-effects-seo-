@@ -106,3 +106,24 @@ def test_parser_ignores_chrome_links_and_counts_body_links():
     pg = parse(f"{SITE}/blogs/news/t", wrap(body))
     assert [h for h, _ in pg.internal_links] == [f"{SITE}/blogs/news/other"]
     assert pg.page_type == "article"
+
+
+def test_login_links_and_icons_are_ignored():
+    body = ("<h1>Almond Joy</h1><p>" + "word " * 60 + "</p>"
+            "<a href='/customer_authentication/redirect?return_url=%2Fproducts%2Fx'>Log in</a>"
+            "<a href='https://account.labeffects.com/login'>Account</a>"
+            "<img src='/cdn/shop/files/canna-leaf-icon.png'><img src='/cdn/shop/files/bottle.png' aria-hidden='true'>"
+            "<img src='/cdn/shop/files/hero.png'>")
+    pg = parse(f"{SITE}/products/almond-joy-natural-terpene-flavor", wrap(body, title="Almond Joy – Lab Effects Shop"))
+    assert pg.internal_links == []
+    assert [s for s, _ in pg.images] == ["/cdn/shop/files/hero.png"]
+    c = {f.check: f for f in run_checks(pg)}
+    assert "Natural Terpene Flavor" in c["title-short"].message
+    assert "em-dash" not in c  # product pages are not copy-checked for em dashes
+
+
+def test_duplicate_h1_text_counts_once_and_em_dash_shows_context():
+    body = "<h1>The House</h1><h1>The House</h1><p>Terpenes — the real thing. " + "word " * 60 + "</p>"
+    c = checks_for(f"{SITE}/", wrap(body, title="Home – Lab Effects Shop"))
+    assert "h1-multiple" not in c
+    assert "the real thing" in c["em-dash"].message

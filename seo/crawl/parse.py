@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from bs4 import BeautifulSoup
 
-from .fetch import normalize, is_internal
+from .fetch import normalize, is_internal, is_chrome_link
 
 # Shopify theme specifics for labeffects.com. Kept in one place so a theme
 # change only touches this file.
@@ -96,7 +96,9 @@ def parse(url: str, html: str) -> Page:
             break
     main = main or soup
 
-    pg.h1s = [h.get_text(" ", strip=True) for h in soup.find_all("h1")]
+    # The mobile layout repeats some headings in its own sections, so count
+    # distinct H1 texts, not H1 tags.
+    pg.h1s = list(dict.fromkeys(h.get_text(" ", strip=True) for h in soup.find_all("h1")))
     pg.h2s = [h.get_text(" ", strip=True) for h in main.find_all("h2")]
     pg.faq_visible = [q.get_text(" ", strip=True).rstrip("+−- ").strip() for q in soup.select(FAQ_QUESTION_SELECTOR)]
 
@@ -109,11 +111,16 @@ def parse(url: str, html: str) -> Page:
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
         full = normalize(href, url)
+        if is_chrome_link(full):
+            continue
         item = (full, a.get_text(" ", strip=True)[:80])
         (pg.internal_links if is_internal(full) else pg.external_links).append(item)
 
     for img in main.find_all("img"):
         src = img.get("src") or img.get("data-src") or ""
+        # Decorative images are allowed an empty alt; skip icons and hidden art.
+        if img.get("aria-hidden") == "true" or img.get("role") == "presentation" or re.search(r"icon|logo|badge|arrow", src, re.I):
+            continue
         pg.images.append((src[-120:], (img.get("alt") or "").strip()))
 
     # Leftover bracketed placeholders that are not a theme shortcode

@@ -14,9 +14,18 @@ session.headers.update({"User-Agent": UA, "Accept": "text/html,application/xhtml
 
 # Shopify URL patterns we do not crawl as pages (they are not SEO surfaces)
 SKIP_PATTERNS = re.compile(
-    r"(/cart|/account|/checkouts?|/search|/cdn/|/apps/|/policies/|\.(png|jpe?g|gif|webp|avif|svg|pdf|css|js|ico|xml|json)$|[?&](variant|page|sort_by|filter)=|/collections/[^/]+/products/)",
+    r"(/cart|/account|/customer_authentication|/checkouts?|/search|/cdn/|/apps/|/policies/|\.(png|jpe?g|gif|webp|avif|svg|pdf|css|js|ico|xml|json)$|[?&](variant|page|sort_by|filter)=|/collections/[^/]+/products/)",
     re.I,
 )
+
+# Links that are part of the store's chrome, not SEO surfaces: login, account,
+# cart, checkout. They 404 or redirect for an anonymous crawler by design.
+IGNORED_LINK_PATTERNS = re.compile(
+    r"(/customer_authentication|/account\b|/cart\b|/checkouts?\b|//account\.|/challenge\b)", re.I)
+
+
+def is_chrome_link(url: str) -> bool:
+    return bool(IGNORED_LINK_PATTERNS.search(url))
 
 
 @dataclass

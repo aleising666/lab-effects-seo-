@@ -70,7 +70,13 @@ def crawl(dry_run: bool = False, limit: int | None = None, urls: list[str] | Non
 
 
 def _print(fs: list[Finding]):
+    from collections import Counter
     order = {"high": 0, "medium": 1, "low": 2}
+    counts = Counter((f.severity, f.check) for f in fs)
+    print("\nSummary:")
+    for (sev, check), n in sorted(counts.items(), key=lambda kv: (order[kv[0][0]], -kv[1])):
+        print(f"  {n:4}  {sev:6}  {check}")
+    print()
     for f in sorted(fs, key=lambda x: (order[x.severity], x.check, x.url)):
         print(f"[{f.severity:6}] {f.check:22} {f.url}\n         {f.message}")
     print(f"\n{len(fs)} findings")
