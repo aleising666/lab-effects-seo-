@@ -1,6 +1,16 @@
-"""Build the report: what is new since the last crawl, what got fixed, and
-where Search Console says the easy wins are. Output is plain Markdown that
-reads fine in Slack and in a terminal.
+"""Build the report as data, then render it (PDF for Slack, text as fallback).
+
+Report structure:
+  {
+    "date": "2026-10-29",
+    "crawl":  {"pages": int, "open": {"high": n, "medium": n, "low": n},
+               "new": int|None, "fixed": int|None,
+               "items": [ {severity, check, url, message} ... ]   # new since last run, or all on first run
+               "grouped_low": [ {check, count, urls[], example} ... ] },
+    "gsc":    {"available": bool, "window": str, "clicks": int, "clicks_delta": str,
+               "impressions": int, "impr_delta": str,
+               "wins": [...], "drops": [...], "new_queries": [...]},
+  }
 """
 from datetime import date, timedelta
 
@@ -13,6 +23,10 @@ from ..keywords.base import get_provider
 SEV_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
+def path_of(url: str) -> str:
+    return url.replace(settings.site_url, "") or "/"
+
+
 def _last_two_runs(conn):
     rows = conn.execute(select(crawl_runs).where(crawl_runs.c.finished_at.isnot(None))
                         .order_by(crawl_runs.c.id.desc()).limit(2)).all()
@@ -23,51 +37,37 @@ def _findings(conn, run_id):
     return conn.execute(select(findings).where(findings.c.run_id == run_id)).all()
 
 
-def crawl_section(conn) -> str:
+def crawl_data(conn) -> dict | None:
     cur, prev = _last_two_runs(conn)
     if not cur:
-        return "_No crawl has run yet._"
+        return None
     cur_f = _findings(conn, cur.id)
     prev_fp = {f.fingerprint for f in _findings(conn, prev.id)} if prev else set()
     cur_fp = {f.fingerprint for f in cur_f}
     new = [f for f in cur_f if f.fingerprint not in prev_fp]
-    fixed = len(prev_fp - cur_fp) if prev else 0
-    by_sev = {s: sum(1 for f in cur_f if f.severity == s) for s in SEV_ORDER}
+    show = sorted(new if prev else cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check, f.url))
 
-    lines = [f"*Site crawl* ({cur.pages_crawled} pages, {len(cur_f)} open findings: "
-             f"{by_sev['high']} high, {by_sev['medium']} medium, {by_sev['low']} low)"]
-    if prev:
-        lines.append(f"Since last crawl: *{len(new)} new*, *{fixed} fixed*.")
-    show = sorted(new if prev else cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check))
-    if not show:
-        lines.append("Nothing new. :white_check_mark:")
-        return "\n".join(lines)
-
-    # High and medium findings are listed one by one. Low findings are usually
-    # the same template problem on many pages, so they are grouped by check.
-    path = lambda u: u.replace(settings.site_url, "") or "/"
-    listed = [f for f in show if f.severity != "low"]
-    for f in listed[:25]:
-        lines.append(f"• `{f.severity}` *{f.check}* <{f.url}|{path(f.url)}>\n   {f.message[:220]}")
-    if len(listed) > 25:
-        lines.append(f"…and {len(listed) - 25} more high/medium.")
+    items = [dict(severity=f.severity, check=f.check, url=f.url, message=f.message)
+             for f in show if f.severity != "low"]
     grouped: dict[str, list] = {}
     for f in show:
         if f.severity == "low":
             grouped.setdefault(f.check, []).append(f)
-    if grouped:
-        lines.append("\n*Low priority, grouped:*")
-        for check, fs in sorted(grouped.items(), key=lambda kv: -len(kv[1])):
-            examples = ", ".join(f"<{f.url}|{path(f.url)}>" for f in fs[:3])
-            more = f" +{len(fs) - 3} more" if len(fs) > 3 else ""
-            lines.append(f"• *{check}* on {len(fs)} page(s): {examples}{more}\n   e.g. {fs[0].message[:160]}")
-    return "\n".join(lines)
+    grouped_low = [dict(check=c, count=len(fs), urls=[f.url for f in fs[:5]], example=fs[0].message)
+                   for c, fs in sorted(grouped.items(), key=lambda kv: -len(kv[1]))]
+    return dict(
+        pages=cur.pages_crawled, finished=str(cur.finished_at)[:16],
+        open={s: sum(1 for f in cur_f if f.severity == s) for s in SEV_ORDER},
+        new=len(new) if prev else None, fixed=len(prev_fp - cur_fp) if prev else None,
+        first_run=prev is None, items=items, grouped_low=grouped_low,
+        all_open=sorted(cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check, f.url)),
+    )
 
 
-def gsc_section(conn, days: int = 7) -> str:
+def gsc_data(conn, days: int = 7) -> dict:
     latest = conn.execute(select(func.max(gsc_daily.c.date))).scalar()
     if not latest:
-        return "_Search Console is not connected yet (set GSC_SERVICE_ACCOUNT_JSON)._"
+        return {"available": False}
     this_end, this_start = latest, latest - timedelta(days=days - 1)
     prev_end, prev_start = this_start - timedelta(days=1), this_start - timedelta(days=days)
 
@@ -80,49 +80,68 @@ def gsc_section(conn, days: int = 7) -> str:
         return {(r.page, r.query): r for r in conn.execute(q)}
 
     cur, prev = window(this_start, this_end), window(prev_start, prev_end)
-    tot_clicks = sum(r.clicks for r in cur.values()); prev_clicks = sum(r.clicks for r in prev.values())
-    tot_impr = sum(r.impr for r in cur.values()); prev_impr = sum(r.impr for r in prev.values())
-    lines = [f"*Search Console* (last {days} days to {this_end})",
-             f"Clicks {tot_clicks} ({_delta(tot_clicks, prev_clicks)}), impressions {tot_impr} ({_delta(tot_impr, prev_impr)})"]
+    tc, pc = sum(r.clicks for r in cur.values()), sum(r.clicks for r in prev.values())
+    ti, pi = sum(r.impr for r in cur.values()), sum(r.impr for r in prev.values())
 
-    # Easy wins: ranking 8-20 with real impressions
-    wins = [r for r in cur.values() if 8 <= r.pos <= 20 and r.impr >= 50]
-    wins.sort(key=lambda r: -r.impr)
-    if wins:
-        lines.append("\n*Close to page one* (position 8 to 20, most impressions first):")
-        kw = get_provider().cached_volumes([r.query for r in wins[:10]]) if settings.keyword_provider != "none" else {}
-        for r in wins[:10]:
-            vol = f", vol {kw[r.query].volume}" if r.query in kw and kw[r.query].volume else ""
-            lines.append(f"• \"{r.query}\" pos {r.pos:.1f}, {r.impr} impr{vol} → {r.page.replace(settings.site_url, '')}")
-
-    # Biggest drops
+    wins = sorted([r for r in cur.values() if 8 <= r.pos <= 20 and r.impr >= 50], key=lambda r: -r.impr)[:12]
+    kw = {}
+    if wins and settings.keyword_provider != "none":
+        kw = get_provider().cached_volumes([r.query for r in wins])
     drops = []
     for key, r in cur.items():
         p = prev.get(key)
         if p and p.impr >= 100 and r.pos - p.pos >= 3:
-            drops.append((r.pos - p.pos, key, p.pos, r.pos, r.impr))
-    drops.sort(reverse=True)
-    if drops:
-        lines.append("\n*Position drops* (3+ places on queries with 100+ impressions):")
-        for d, (page, query), a, b, impr in drops[:8]:
-            lines.append(f"• \"{query}\" {a:.1f} → {b:.1f} on {page.replace(settings.site_url, '')}")
+            drops.append(dict(query=key[1], page=key[0], before=round(p.pos, 1), after=round(r.pos, 1), impressions=r.impr))
+    drops.sort(key=lambda d: -(d["after"] - d["before"]))
+    new_q = sorted([r for k, r in cur.items() if k not in prev and r.impr >= 30], key=lambda r: -r.impr)
 
-    # New queries
-    new_q = [r for k, r in cur.items() if k not in prev and r.impr >= 30]
-    new_q.sort(key=lambda r: -r.impr)
-    if new_q:
-        lines.append("\n*New queries this week:* " + ", ".join(f"\"{r.query}\"" for r in new_q[:8]))
-    return "\n".join(lines)
+    return dict(
+        available=True, window=f"{this_start} to {this_end}",
+        clicks=tc, clicks_delta=_delta(tc, pc), impressions=ti, impr_delta=_delta(ti, pi),
+        wins=[dict(query=r.query, page=r.page, position=round(r.pos, 1), impressions=r.impr,
+                   volume=(kw[r.query].volume if r.query in kw else None)) for r in wins],
+        drops=drops[:10],
+        new_queries=[dict(query=r.query, page=r.page, impressions=r.impr) for r in new_q[:10]],
+    )
 
 
 def _delta(a, b):
     if not b:
         return "n/a"
     pct = (a - b) / b * 100
-    return f"{'+' if pct >= 0 else ''}{pct:.0f}% vs prior"
+    return f"{'+' if pct >= 0 else ''}{pct:.0f}% vs prior period"
+
+
+def build_data() -> dict:
+    with engine().begin() as conn:
+        return dict(date=str(date.today()), site=settings.site_url, crawl=crawl_data(conn), gsc=gsc_data(conn))
+
+
+def to_text(d: dict) -> str:
+    """Short Slack-friendly summary (the PDF carries the detail)."""
+    lines = [f"*Lab Effects SEO report, {d['date']}*"]
+    c = d["crawl"]
+    if not c:
+        lines.append("No crawl has run yet.")
+    else:
+        o = c["open"]
+        lines.append(f"Crawl: {c['pages']} pages, {sum(o.values())} open findings "
+                     f"({o['high']} high, {o['medium']} medium, {o['low']} low).")
+        if c["new"] is not None:
+            lines.append(f"Since last run: {c['new']} new, {c['fixed']} fixed.")
+        for it in c["items"][:5]:
+            lines.append(f"• `{it['severity']}` {it['check']} on {path_of(it['url'])}")
+        if len(c["items"]) > 5:
+            lines.append(f"…{len(c['items']) - 5} more in the PDF.")
+    g = d["gsc"]
+    if g.get("available"):
+        lines.append(f"Search Console ({g['window']}): {g['clicks']} clicks ({g['clicks_delta']}), "
+                     f"{g['impressions']} impressions ({g['impr_delta']}). "
+                     f"{len(g['wins'])} queries close to page one, {len(g['drops'])} drops.")
+    else:
+        lines.append("Search Console: not connected yet.")
+    return "\n".join(lines)
 
 
 def build() -> str:
-    with engine().begin() as conn:
-        parts = [f"*Lab Effects SEO report, {date.today()}*", crawl_section(conn), gsc_section(conn)]
-    return "\n\n".join(parts)
+    return to_text(build_data())

@@ -12,6 +12,13 @@ from .parse import Page, BRAND_SUFFIX
 
 HIGH, MEDIUM, LOW = "high", "medium", "low"
 
+
+def _list(items, n=3):
+    """Readable comma list for messages, with a count of anything left over."""
+    items = list(items)
+    shown = ", ".join(str(x) for x in items[:n])
+    return shown + (f" (and {len(items) - n} more)" if len(items) > n else "")
+
 # House style: American English only, no em dashes.
 BRITISH = re.compile(
     r"\b(flavour\w*|colour\w*|odour\w*|vapour\w*|behaviour\w*|analys(e|ed|es|ing)|characteris(e|ed|es|ing)|"
@@ -80,10 +87,10 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
     if len(pg.h1s) == 0:
         F("h1-missing", MEDIUM, "No H1 on the page")
     elif len(pg.h1s) > 1:
-        F("h1-multiple", LOW, f"{len(pg.h1s)} H1s: {pg.h1s[:3]}")
+        F("h1-multiple", LOW, f"{len(pg.h1s)} H1s: {_list(pg.h1s)}")
     caps = [h for h in pg.h2s if len(h) > 12 and h == h.upper()]
     if caps:
-        F("heading-all-caps", LOW, f"{len(caps)} heading(s) typed in ALL CAPS (use sentence case + CSS): {caps[:2]}")
+        F("heading-all-caps", LOW, f"{len(caps)} heading(s) typed in ALL CAPS (use sentence case + CSS): {_list(caps, 2)}")
 
     # --- Content ---
     limit = THIN_WORDS.get(pg.page_type)
@@ -104,7 +111,7 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
                 break
         hits = sorted(set(m.group(0).lower() for m in BRITISH.finditer(pg.body_text)))
         if hits:
-            F("british-spelling", LOW, f"British spelling in copy: {hits[:6]}")
+            F("british-spelling", LOW, f"British spelling in copy: {_list(hits, 6)}")
     for ph in pg.placeholders[:5]:
         F("placeholder-text", HIGH, f"Bracketed placeholder printing on the page: {ph}")
     if re.search(r"\bover (50|55|105)\b|\b(40|100)\+ ", pg.body_text):
@@ -125,7 +132,7 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
             F("faq-schema-missing", LOW, f"{len(pg.faq_visible)} visible FAQs but no FAQPage schema")
         elif vis and sch and vis != sch:
             F("faq-schema-mismatch", MEDIUM,
-              f"FAQ schema ({len(sch)}) does not match visible FAQ ({len(vis)}); missing from schema: {sorted(vis - sch)[:3]}")
+              f"FAQ schema ({len(sch)}) does not match visible FAQ ({len(vis)}); missing from schema: {_list(sorted(vis - sch))}")
 
     # --- Links (needs the post-crawl status map) ---
     if link_status:
@@ -138,16 +145,16 @@ def run_checks(pg: Page, link_status: dict[str, tuple[int, int, str]] | None = N
             if status == 404 or status == 410:
                 broken.append(href)
             elif hops > 0 and final != href:
-                redirecting.append(f"{href} -> {final}")
+                redirecting.append(f"{href} now goes to {final}")
         for href, _ in pg.external_links:
             if "myshopify.com" in href or "shop.labeffects.com" in href:
                 old_shop.append(href)
         if broken:
-            F("broken-link", HIGH, f"{len(broken)} internal link(s) 404: {broken[:3]}")
+            F("broken-link", HIGH, f"{len(broken)} internal link(s) 404: {_list(broken)}")
         if redirecting:
-            F("redirect-link", MEDIUM, f"{len(redirecting)} internal link(s) go through a redirect: {redirecting[:3]}")
+            F("redirect-link", MEDIUM, f"{len(redirecting)} internal link(s) go through a redirect: {_list(redirecting)}")
         if old_shop:
-            F("old-domain-link", MEDIUM, f"{len(old_shop)} link(s) to the old shop domain: {old_shop[:3]}")
+            F("old-domain-link", MEDIUM, f"{len(old_shop)} link(s) to the old shop domain: {_list(old_shop)}")
 
     return out
 

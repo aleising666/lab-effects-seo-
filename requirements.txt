@@ -7,3 +7,4 @@ google-api-python-client>=2.100
 google-auth>=2.20
 python-dotenv>=1.0
 pytest>=8.0
+reportlab>=4.0

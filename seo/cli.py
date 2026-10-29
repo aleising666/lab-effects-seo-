@@ -26,20 +26,30 @@ def main(argv=None):
         from .gsc.run import pull
         pull(days=a.days)
     elif a.cmd == "report":
-        from .report.build import build
-        from .report.slack import post
-        post(build())
+        report()
     elif a.cmd == "all":
         from .crawl.run import crawl
-        from .report.build import build
-        from .report.slack import post
         crawl()
         try:
             from .gsc.run import pull
             pull()
         except SystemExit as e:
             print(f"Skipping Search Console: {e}", file=sys.stderr)
-        post(build())
+        report()
+
+
+def report():
+    """Build the data, render the PDF, post it (with a short text summary)."""
+    import os
+    from .config import settings
+    from .report.build import build_data, to_text
+    from .report.pdf import render
+    from .report.slack import post
+    d = build_data()
+    pdf = os.path.join(settings.report_dir, f"lab-effects-seo-report-{d['date']}.pdf")
+    render(d, pdf)
+    route = post(to_text(d), pdf_path=pdf, title=f"Lab Effects SEO report {d['date']}")
+    print(f"Report sent via {route}: {pdf}", file=sys.stderr)
 
 
 if __name__ == "__main__":

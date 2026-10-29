@@ -25,7 +25,7 @@ seo/
   crawl/           sitemap discovery, polite fetching, the checks
   gsc/             Google Search Console pull
   keywords/        provider interface: none | dataforseo
-  report/          diff against the last run, Slack post
+  report/          diff against the last run, PDF (reportlab), Slack upload
 tests/             fixtures and unit tests for the checks
 render.yaml        the scheduled jobs on Render
 ```
@@ -54,8 +54,13 @@ python -m seo crawl --dry-run  # crawl and print findings, store nothing
    Search Console API, add the service account's email as a user on the
    labeffects.com property in Search Console, and paste the JSON key into
    `GSC_SERVICE_ACCOUNT_JSON`.
-5. For Slack: create an incoming webhook for the channel and set
-   `SLACK_WEBHOOK_URL`.
+5. For Slack: the report is a PDF, so it needs a Slack app with a bot token.
+   At https://api.slack.com/apps create an app in the workspace, add the bot
+   scopes `chat:write` and `files:write`, install it, copy the
+   "Bot User OAuth Token" (starts with `xoxb-`) into `SLACK_BOT_TOKEN`, and
+   invite the bot to the channel (`/invite @<app name>` in the channel).
+   `SLACK_CHANNEL_ID` is the `C...` id at the end of the channel URL.
+   If only `SLACK_WEBHOOK_URL` is set, a text summary is posted and no PDF.
 
 ## Deploying
 

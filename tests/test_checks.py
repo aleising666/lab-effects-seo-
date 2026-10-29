@@ -147,6 +147,11 @@ def test_report_groups_low_findings(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "fetch", lambda u: type("F", (), dict(status=200, redirect_hops=0, final_url=u, html=html, error=""))())
     monkeypatch.setattr(run, "polite_sleep", lambda: None)
     crawl(urls=[f"{SITE}/products/a", f"{SITE}/products/b"])
-    text = build()
-    assert "Low priority, grouped" in text
-    assert "img-no-alt* on 2 page(s)" in text
+    from seo.report.build import build_data
+    from seo.report.pdf import render
+    d = build_data()
+    groups = {g["check"]: g["count"] for g in d["crawl"]["grouped_low"]}
+    assert groups["img-no-alt"] == 2
+    out = render(d, str(tmp_path / "r.pdf"))
+    assert (tmp_path / "r.pdf").stat().st_size > 2000
+    assert "4 open findings" in build()
