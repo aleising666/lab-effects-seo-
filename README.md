@@ -25,6 +25,7 @@ seo/
   crawl/           sitemap discovery, polite fetching, the checks
   gsc/             Google Search Console pull
   keywords/        provider interface: none | dataforseo
+  market/          rank tracking, competitor gaps, backlinks (DataForSEO)
   report/          diff against the last run, PDF (reportlab), Slack upload
 tests/             fixtures and unit tests for the checks
 render.yaml        the scheduled jobs on Render
@@ -35,8 +36,11 @@ render.yaml        the scheduled jobs on Render
 ```
 python -m seo crawl            # crawl the site, store findings
 python -m seo gsc              # pull the last 3 days from Search Console
+python -m seo ranks            # every keyword we rank for, with positions (DataForSEO)
+python -m seo gaps             # keywords competitors rank for that we do not (DataForSEO)
+python -m seo backlinks        # backlink totals and referring domains (DataForSEO)
 python -m seo report           # build and post the report
-python -m seo all              # crawl, gsc, report
+python -m seo all              # crawl, gsc, ranks, backlinks, gaps if a week old, report
 python -m seo crawl --dry-run  # crawl and print findings, store nothing
 ```
 

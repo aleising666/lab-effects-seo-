@@ -26,6 +26,12 @@ class Settings:
     keyword_provider: str = _env("KEYWORD_PROVIDER", "none").lower()
     dataforseo_login: str = _env("DATAFORSEO_LOGIN")
     dataforseo_password: str = _env("DATAFORSEO_PASSWORD")
+    # Market data (rank tracking, competitor gaps, backlinks)
+    country: str = _env("COUNTRY", "us").lower()
+    competitors: tuple = tuple(c.strip().lower() for c in
+                               _env("COMPETITORS", "trueterpenes.com,abstraxtech.com,floraplexterpenes.com").split(",") if c.strip())
+    rank_limit: int = int(_env("RANK_LIMIT", "1000") or 1000)
+    gap_limit: int = int(_env("GAP_LIMIT", "300") or 300)
     crawl_max_pages: int = int(_env("CRAWL_MAX_PAGES", "3000") or 3000)
     crawl_delay_seconds: float = float(_env("CRAWL_DELAY_SECONDS", "0.5") or 0.5)
 

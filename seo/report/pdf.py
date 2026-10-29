@@ -5,8 +5,11 @@ Layout:
            new / fixed), then "Fix first": every high and medium finding with a
            plain-English note on what to do.
   Next     "Lower priority", grouped by check with counts and example pages.
-  Last     Search Console: clicks/impressions, close-to-page-one queries,
+  Then     Search Console: clicks/impressions, close-to-page-one queries,
            position drops, new queries.
+  Then     Rankings (movers, new/lost page one), Competitor keyword gaps,
+           Backlinks (totals, new/lost referring domains). Each says "no data
+           yet" until its pull has run.
 """
 import os
 import re
@@ -28,6 +31,7 @@ from .build import path_of
 TEAL, GOLD, LEAF = colors.HexColor("#108090"), colors.HexColor("#DAA423"), colors.HexColor("#60B050")
 INK, CREAM, GRAY = colors.HexColor("#072326"), colors.HexColor("#EDEEE2"), colors.HexColor("#6B7280")
 SEV_COLOR = {"high": colors.HexColor("#C0392B"), "medium": GOLD, "low": GRAY}
+MOVE_LABEL = "(3+ places)"
 
 # What to do about each check, in plain English, for the "Fix first" list.
 ADVICE = {
@@ -147,6 +151,26 @@ def render(d: dict, out_path: str) -> str:
                                    ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
             story.append(t)
 
+    H3 = ParagraphStyle("h3", parent=P, fontName=bold_font, spaceBefore=10, spaceAfter=4)
+
+    def table(title, header, rows, widths):
+        if not rows:
+            return
+        story.append(Paragraph(title, H3))
+        data = [header] + rows
+        t = Table(data, colWidths=widths, repeatRows=1)
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), CREAM), ("FONTNAME", (0, 0), (-1, 0), bold_font),
+                               ("FONTNAME", (0, 1), (-1, -1), body_font), ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                               ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
+                               ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(t)
+
+    def num(v):
+        return "–" if v is None else f"{v:,}" if isinstance(v, int) else str(v)
+
+    def signed(v):
+        return "–" if v is None else f"{v:+,}"
+
     # Search Console
     g = d["gsc"]
     story.append(PageBreak())
@@ -157,18 +181,6 @@ def render(d: dict, out_path: str) -> str:
     else:
         story.append(Paragraph(f"Window: {g['window']}. Clicks <b>{g['clicks']}</b> ({g['clicks_delta']}), "
                                f"impressions <b>{g['impressions']}</b> ({g['impr_delta']}).", P))
-
-        def table(title, header, rows, widths):
-            if not rows:
-                return
-            story.append(Paragraph(title, ParagraphStyle("h3", parent=P, fontName=bold_font, spaceBefore=10, spaceAfter=4)))
-            data = [header] + rows
-            t = Table(data, colWidths=widths, repeatRows=1)
-            t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), CREAM), ("FONTNAME", (0, 0), (-1, 0), bold_font),
-                                   ("FONTNAME", (0, 1), (-1, -1), body_font), ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                                   ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
-                                   ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-            story.append(t)
 
         table("Close to page one (position 8 to 20, most impressions first)",
               ["Query", "Position", "Impressions", "Volume", "Page"],
@@ -183,6 +195,74 @@ def render(d: dict, out_path: str) -> str:
         table("New queries this period", ["Query", "Impressions", "Page"],
               [[Paragraph(_esc(x["query"]), P), f"{x['impressions']}", Paragraph(_esc(path_of(x["page"])), MONO)] for x in g["new_queries"]],
               [3.0 * inch, 1.0 * inch, 3.0 * inch])
+
+    # Rankings (DataForSEO Labs)
+    r = d.get("ranks") or {}
+    story.append(PageBreak())
+    story.append(Paragraph("Rankings", H2))
+    if not r.get("available"):
+        story.append(Paragraph("No rank data yet. Runs with KEYWORD_PROVIDER=dataforseo (`python -m seo ranks`).", P))
+    else:
+        n, b = r["now"], r["before"]
+        intro = (f"As of {r['date']}: <b>{n['total']}</b> keywords ranking in the top 100, <b>{n['top10']}</b> on page one, "
+                 f"<b>{n['top3']}</b> in the top 3.")
+        if b:
+            intro += (f" Compared with {r['baseline']}: page one {signed(n['top10'] - b['top10'])}, "
+                      f"top 3 {signed(n['top3'] - b['top3'])}, total {signed(n['total'] - b['total'])}.")
+        story.append(Paragraph(intro, P))
+        kw_row = lambda x: [Paragraph(_esc(x["keyword"]), P), num(x.get("before")), num(x.get("position")),
+                            num(x.get("volume") or None), Paragraph(_esc(path_of(x["url"] or "")), MONO)]
+        widths = [2.4 * inch, 0.6 * inch, 0.6 * inch, 0.7 * inch, 2.7 * inch]
+        hdr = ["Keyword", "Before", "Now", "Volume", "Page"]
+        table(f"Moved up {MOVE_LABEL}", hdr, [kw_row(x) for x in r["up"]], widths)
+        table(f"Moved down {MOVE_LABEL}", hdr, [kw_row(x) for x in r["down"]], widths)
+        table("New to page one", hdr, [kw_row(x) for x in r["new_top10"]], widths)
+        table("Fell off page one", hdr, [kw_row(x) for x in r["lost_page1"]], widths)
+        if not any([r["up"], r["down"], r["new_top10"], r["lost_page1"]]) and b:
+            story.append(Paragraph("No keyword moved 3 or more places since the baseline.", SMALL))
+        table("Highest-volume keywords we rank for", ["Keyword", "Position", "Volume", "Page"],
+              [[Paragraph(_esc(t.keyword), P), num(t.position), num(t.volume), Paragraph(_esc(path_of(t.url or "")), MONO)]
+               for t in r["top"]], [2.6 * inch, 0.7 * inch, 0.8 * inch, 2.9 * inch])
+
+    # Competitor gaps
+    gp = d.get("gaps") or {}
+    story.append(PageBreak())
+    story.append(Paragraph("Competitor keyword gaps", H2))
+    if not gp.get("available"):
+        story.append(Paragraph("No gap data yet. Runs weekly, or with `python -m seo gaps`.", P))
+    else:
+        comps = ", ".join(f"{c} ({n})" for c, n in gp["per_competitor"].items())
+        story.append(Paragraph(f"Keywords each competitor ranks top-20 for in US Google where labeffects.com does not rank at all, "
+                               f"as of {gp['date']}: {_esc(comps)}. Treat these as topics to cover, not exact titles.", P))
+
+        def comp_cell(m):
+            return Paragraph("<br/>".join(f"{_esc(c['domain'])} #{c['position']}" for c in m["competitors"]), SMALL)
+
+        gap_row = lambda m: [Paragraph(_esc(m["keyword"]), P), num(m["volume"] or None), num(m.get("difficulty")), comp_cell(m)]
+        gw = [2.6 * inch, 0.8 * inch, 0.8 * inch, 2.8 * inch]
+        table("Shared gaps (2 or more competitors rank, we do not)", ["Keyword", "Volume", "Difficulty", "Who ranks"],
+              [gap_row(m) for m in gp["shared"]], gw)
+        table("Biggest gaps by search volume", ["Keyword", "Volume", "Difficulty", "Who ranks"],
+              [gap_row(m) for m in gp["top"]], gw)
+
+    # Backlinks
+    bl = d.get("backlinks") or {}
+    story.append(PageBreak())
+    story.append(Paragraph("Backlinks", H2))
+    if not bl.get("available"):
+        story.append(Paragraph("No backlink data yet. Runs nightly with DataForSEO (`python -m seo backlinks`).", P))
+    else:
+        s = f"As of {bl['date']}: <b>{num(bl['backlinks'])}</b> backlinks from <b>{num(bl['referring_domains'])}</b> referring domains"
+        if bl["baseline"]:
+            s += f" ({signed(bl['backlinks_delta'])} links, {signed(bl['domains_delta'])} domains since {bl['baseline']})"
+        s += f". Domain rank {num(bl['rank'])}, broken backlinks {num(bl['broken'])}."
+        story.append(Paragraph(s, P))
+        dom_row = lambda x: [Paragraph(_esc(x["domain"]), P), num(x["rank"]), num(x["backlinks"]), x["first_seen"] or "–"]
+        dw = [3.4 * inch, 0.9 * inch, 1.0 * inch, 1.7 * inch]
+        hdr = ["Domain", "Rank", "Links", "First seen"]
+        table("New referring domains", hdr, [dom_row(x) for x in bl["new"]], dw)
+        table("Lost referring domains", hdr, [dom_row(x) for x in bl["lost"]], dw)
+        table("Strongest referring domains", hdr, [dom_row(x) for x in bl["top"]], dw)
 
     story.append(Spacer(1, 18))
     story.append(Paragraph("Generated by the Lab Effects SEO monitor. Severity: high = broken or invisible to Google, "

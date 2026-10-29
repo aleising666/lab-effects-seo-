@@ -54,3 +54,73 @@ class DataForSEOProvider(Provider):
                 if k in out:
                     out[k].difficulty = item.get("keyword_difficulty")
         return list(out.values())
+
+    # ---- Market data: rank tracking, competitor gaps, backlinks ----------
+    # Each returns plain dicts so the storage layer never sees DataForSEO's shapes.
+
+    def ranked_keywords(self, domain: str, country: str = "us", limit: int = 1000) -> list[dict]:
+        """Every keyword `domain` ranks for in the top 100 (DataForSEO Labs).
+        Docs: /v3/dataforseo_labs/google/ranked_keywords/live  (~$0.01 per call + per row)"""
+        loc = LOCATION.get(country, 2840)
+        out = []
+        for offset in range(0, limit, 1000):
+            items = self._post("/dataforseo_labs/google/ranked_keywords/live", [{
+                "target": domain, "location_code": loc, "language_code": "en",
+                "item_types": ["organic", "featured_snippet"], "ignore_synonyms": True,
+                "limit": min(1000, limit - offset), "offset": offset,
+                "order_by": ["keyword_data.keyword_info.search_volume,desc"],
+            }])
+            for it in items:
+                kd, se = it.get("keyword_data") or {}, (it.get("ranked_serp_element") or {}).get("serp_item") or {}
+                if not kd.get("keyword"):
+                    continue
+                out.append(dict(
+                    keyword=kd["keyword"], position=se.get("rank_group"), url=se.get("url"),
+                    volume=(kd.get("keyword_info") or {}).get("search_volume"),
+                    difficulty=(kd.get("keyword_properties") or {}).get("keyword_difficulty"),
+                    result_type=se.get("type"),
+                ))
+            if len(items) < 1000:
+                break
+        return out
+
+    def keyword_gaps(self, competitor: str, our_domain: str, country: str = "us", limit: int = 300) -> list[dict]:
+        """Keywords `competitor` ranks for that `our_domain` does not rank for at all.
+        Docs: /v3/dataforseo_labs/google/domain_intersection/live with intersections=false"""
+        loc = LOCATION.get(country, 2840)
+        items = self._post("/dataforseo_labs/google/domain_intersection/live", [{
+            "target1": competitor, "target2": our_domain, "location_code": loc, "language_code": "en",
+            "intersections": False, "limit": min(1000, limit),
+            "order_by": ["keyword_data.keyword_info.search_volume,desc"],
+            # competitor must be on page 1 or 2; skip near-zero volume noise
+            "filters": [["first_domain_serp_element.rank_group", "<=", 20], "and",
+                        ["keyword_data.keyword_info.search_volume", ">=", 20]],
+        }])
+        out = []
+        for it in items:
+            kd, fe = it.get("keyword_data") or {}, it.get("first_domain_serp_element") or {}
+            if not kd.get("keyword"):
+                continue
+            out.append(dict(
+                keyword=kd["keyword"], volume=(kd.get("keyword_info") or {}).get("search_volume"),
+                difficulty=(kd.get("keyword_properties") or {}).get("keyword_difficulty"),
+                competitor_position=fe.get("rank_group"), competitor_url=fe.get("url"),
+            ))
+        return out
+
+    def backlink_summary(self, domain: str) -> dict:
+        """Totals. Docs: /v3/backlinks/summary/live (~$0.02 per call)"""
+        res = self._post("/backlinks/summary/live", [{"target": domain, "include_subdomains": True}])
+        r = res[0] if res else {}
+        return dict(backlinks=r.get("backlinks"), referring_domains=r.get("referring_domains"),
+                    referring_main_domains=r.get("referring_main_domains"), rank=r.get("rank"),
+                    broken_backlinks=r.get("broken_backlinks"))
+
+    def referring_domains(self, domain: str, limit: int = 1000) -> list[dict]:
+        """Who links to us, strongest first. Docs: /v3/backlinks/referring_domains/live"""
+        items = self._post("/backlinks/referring_domains/live", [{
+            "target": domain, "include_subdomains": True, "limit": min(1000, limit),
+            "order_by": ["rank,desc"], "backlinks_status_type": "live",
+        }])
+        return [dict(domain=it.get("domain"), rank=it.get("rank"), backlinks=it.get("backlinks"),
+                     first_seen=(it.get("first_seen") or "")[:10]) for it in items if it.get("domain")]

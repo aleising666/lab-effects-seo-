@@ -113,8 +113,10 @@ def _delta(a, b):
 
 
 def build_data() -> dict:
+    from ..market.report import backlink_data, gap_data, rank_data
     with engine().begin() as conn:
-        return dict(date=str(date.today()), site=settings.site_url, crawl=crawl_data(conn), gsc=gsc_data(conn))
+        return dict(date=str(date.today()), site=settings.site_url, crawl=crawl_data(conn), gsc=gsc_data(conn),
+                    ranks=rank_data(conn), gaps=gap_data(conn), backlinks=backlink_data(conn))
 
 
 def to_text(d: dict) -> str:
@@ -140,6 +142,23 @@ def to_text(d: dict) -> str:
                      f"{len(g['wins'])} queries close to page one, {len(g['drops'])} drops.")
     else:
         lines.append("Search Console: not connected yet.")
+    r = d.get("ranks") or {}
+    if r.get("available"):
+        n = r["now"]
+        s = f"Rankings: {n['total']} keywords, {n['top10']} on page one, {n['top3']} in the top 3."
+        if r["before"]:
+            s += f" Since {r['baseline']}: {len(r['up'])} up, {len(r['down'])} down, {len(r['new_top10'])} new to page one, {len(r['lost_page1'])} fell off."
+        lines.append(s)
+    gp = d.get("gaps") or {}
+    if gp.get("available"):
+        lines.append(f"Competitor gaps: {sum(gp['per_competitor'].values())} keywords they rank for and we do not; "
+                     f"{len(gp['shared'])} shared by 2+ competitors (top targets in the PDF).")
+    b = d.get("backlinks") or {}
+    if b.get("available"):
+        s = f"Backlinks: {b['backlinks']} links from {b['referring_domains']} domains."
+        if b["baseline"]:
+            s += f" {len(b['new'])} new domains, {len(b['lost'])} lost since {b['baseline']}."
+        lines.append(s)
     return "\n".join(lines)
 
 

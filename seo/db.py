@@ -6,6 +6,10 @@ Tables:
   findings        one row per problem found on a page in a crawl
   gsc_daily       Search Console rows: date x page x query
   keyword_volume  cached keyword data from the provider
+  rank_snapshots  every keyword the site ranks for, per day (DataForSEO Labs)
+  keyword_gaps    keywords a competitor ranks for and we do not (weekly)
+  backlink_snapshots  backlink totals per day
+  referring_domains   the domains linking to us, per day, to diff new/lost
 """
 from datetime import datetime
 
@@ -75,6 +79,51 @@ keyword_volume = Table(
     Column("cpc", Float),
     Column("fetched_at", DateTime, nullable=False),
     Column("provider", String(32), nullable=False),
+)
+
+rank_snapshots = Table(
+    "rank_snapshots", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("date", Date, nullable=False, index=True),
+    Column("keyword", String(512), nullable=False, index=True),
+    Column("position", Integer),          # rank_group: 1 = top organic result
+    Column("url", String(1024)),
+    Column("volume", Integer),
+    Column("difficulty", Integer),
+    Column("result_type", String(32)),    # organic | paid | featured_snippet ...
+)
+
+keyword_gaps = Table(
+    "keyword_gaps", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("date", Date, nullable=False, index=True),
+    Column("competitor", String(256), nullable=False, index=True),
+    Column("keyword", String(512), nullable=False),
+    Column("volume", Integer),
+    Column("difficulty", Integer),
+    Column("competitor_position", Integer),
+    Column("competitor_url", String(1024)),
+)
+
+backlink_snapshots = Table(
+    "backlink_snapshots", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("date", Date, nullable=False, index=True),
+    Column("backlinks", Integer),
+    Column("referring_domains", Integer),
+    Column("referring_main_domains", Integer),
+    Column("rank", Integer),
+    Column("broken_backlinks", Integer),
+)
+
+referring_domains = Table(
+    "referring_domains", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("date", Date, nullable=False, index=True),
+    Column("domain", String(256), nullable=False, index=True),
+    Column("rank", Integer),
+    Column("backlinks", Integer),
+    Column("first_seen", String(32)),
 )
 
 _engine = None
