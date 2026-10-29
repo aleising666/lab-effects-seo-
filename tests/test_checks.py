@@ -127,3 +127,26 @@ def test_duplicate_h1_text_counts_once_and_em_dash_shows_context():
     c = checks_for(f"{SITE}/", wrap(body, title="Home – Lab Effects Shop"))
     assert "h1-multiple" not in c
     assert "the real thing" in c["em-dash"].message
+
+
+def test_title_whitespace_is_collapsed():
+    pg = parse(f"{SITE}/products/x", wrap("<h1>x</h1><p>" + "word " * 60 + "</p>", title="Almond Joy\n   – Lab Effects Shop"))
+    assert pg.title == "Almond Joy – Lab Effects Shop"
+
+
+def test_report_groups_low_findings(tmp_path, monkeypatch):
+    import seo.config as cfg, seo.db as db
+    monkeypatch.setattr(cfg, "settings", cfg.Settings(database_url=f"sqlite:///{tmp_path}/t.db"))
+    monkeypatch.setattr(db, "settings", cfg.settings)
+    db._engine = None
+    from seo.crawl.run import crawl
+    from seo.report.build import build
+    # two fake pages crawled from fixtures by monkeypatching fetch
+    import seo.crawl.run as run
+    html = wrap("<h1>x</h1><p>" + "word " * 60 + "</p><img src='/a.png'>", title="Almond Joy – Lab Effects Shop")
+    monkeypatch.setattr(run, "fetch", lambda u: type("F", (), dict(status=200, redirect_hops=0, final_url=u, html=html, error=""))())
+    monkeypatch.setattr(run, "polite_sleep", lambda: None)
+    crawl(urls=[f"{SITE}/products/a", f"{SITE}/products/b"])
+    text = build()
+    assert "Low priority, grouped" in text
+    assert "img-no-alt* on 2 page(s)" in text

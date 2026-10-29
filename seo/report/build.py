@@ -41,11 +41,26 @@ def crawl_section(conn) -> str:
     show = sorted(new if prev else cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check))
     if not show:
         lines.append("Nothing new. :white_check_mark:")
-    for f in show[:25]:
-        path = f.url.replace(settings.site_url, "") or "/"
-        lines.append(f"• `{f.severity}` *{f.check}* <{f.url}|{path}>\n   {f.message[:220]}")
-    if len(show) > 25:
-        lines.append(f"…and {len(show) - 25} more.")
+        return "\n".join(lines)
+
+    # High and medium findings are listed one by one. Low findings are usually
+    # the same template problem on many pages, so they are grouped by check.
+    path = lambda u: u.replace(settings.site_url, "") or "/"
+    listed = [f for f in show if f.severity != "low"]
+    for f in listed[:25]:
+        lines.append(f"• `{f.severity}` *{f.check}* <{f.url}|{path(f.url)}>\n   {f.message[:220]}")
+    if len(listed) > 25:
+        lines.append(f"…and {len(listed) - 25} more high/medium.")
+    grouped: dict[str, list] = {}
+    for f in show:
+        if f.severity == "low":
+            grouped.setdefault(f.check, []).append(f)
+    if grouped:
+        lines.append("\n*Low priority, grouped:*")
+        for check, fs in sorted(grouped.items(), key=lambda kv: -len(kv[1])):
+            examples = ", ".join(f"<{f.url}|{path(f.url)}>" for f in fs[:3])
+            more = f" +{len(fs) - 3} more" if len(fs) > 3 else ""
+            lines.append(f"• *{check}* on {len(fs)} page(s): {examples}{more}\n   e.g. {fs[0].message[:160]}")
     return "\n".join(lines)
 
 

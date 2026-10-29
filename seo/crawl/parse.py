@@ -58,9 +58,9 @@ def parse(url: str, html: str) -> Page:
     pg = Page(url=url, page_type=page_type_of(url))
 
     t = soup.find("title")
-    pg.title = t.get_text(" ", strip=True) if t else ""
+    pg.title = re.sub(r"\s+", " ", t.get_text(" ", strip=True)) if t else ""
     md = soup.find("meta", attrs={"name": re.compile("^description$", re.I)})
-    pg.meta_description = (md.get("content") or "").strip() if md else ""
+    pg.meta_description = re.sub(r"\s+", " ", (md.get("content") or "").strip()) if md else ""
     rb = soup.find("meta", attrs={"name": re.compile("^robots$", re.I)})
     pg.robots = (rb.get("content") or "").strip().lower() if rb else ""
     can = soup.find("link", rel=lambda v: v and "canonical" in v)
