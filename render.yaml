@@ -22,7 +22,7 @@ services:
       - key: AHREFS_API_KEY
         sync: false
       - key: COMPETITORS
-        value: trueterpenes.com,abstraxtech.com,floraplexterpenes.com
+        value: trueterpenes.com,abstraxtech.com,buyterpenesonline.com
       - key: DATABASE_URL
         fromDatabase:
           name: lab-effects-seo-db

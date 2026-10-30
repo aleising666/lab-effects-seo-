@@ -115,7 +115,8 @@ class AhrefsProvider(Provider):
             if len(out) >= limit:
                 break
         self._attach_volumes(out, country)
-        return [g for g in out if (g["volume"] or 0) >= 20]
+        # Drop near-zero terms, but keep rows whose volume is simply unknown.
+        return [g for g in out if g["volume"] is None or g["volume"] >= 20]
 
     def backlink_summary(self, domain: str) -> dict:
         stats = self._get("/site-explorer/backlinks-stats", target=domain, date=self._today(), mode="subdomains")

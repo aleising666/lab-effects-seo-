@@ -30,7 +30,7 @@ class Settings:
     # Market data (rank tracking, competitor gaps, backlinks)
     country: str = _env("COUNTRY", "us").lower()
     competitors: tuple = tuple(c.strip().lower() for c in
-                               _env("COMPETITORS", "trueterpenes.com,abstraxtech.com,floraplexterpenes.com").split(",") if c.strip())
+                               _env("COMPETITORS", "trueterpenes.com,abstraxtech.com,buyterpenesonline.com").split(",") if c.strip())
     rank_limit: int = int(_env("RANK_LIMIT", "1000") or 1000)
     gap_limit: int = int(_env("GAP_LIMIT", "300") or 300)
     crawl_max_pages: int = int(_env("CRAWL_MAX_PAGES", "3000") or 3000)

@@ -48,16 +48,24 @@ def pull_ranks(day: date | None = None, provider=None) -> int:
 def pull_gaps(day: date | None = None, provider=None, competitors=None) -> int:
     day = day or date.today()
     p = provider or _provider()
-    total = 0
+    # Fetch everything first, then write in one transaction. The provider's
+    # volume cache writes to the same SQLite file, and SQLite allows one
+    # writer at a time, so holding a transaction open across API calls
+    # produced "database is locked".
+    fetched: dict[str, list[dict]] = {}
+    for comp in (competitors or settings.competitors):
+        rows = p.keyword_gaps(comp, settings.host, settings.country, settings.gap_limit)
+        if not rows:
+            print(f"Gaps: 0 keywords from {comp} (check the domain spelling in COMPETITORS)", file=sys.stderr)
+        else:
+            print(f"Gaps: {len(rows)} keywords from {comp}", file=sys.stderr)
+        fetched[comp] = rows
     with engine().begin() as conn:
-        for comp in (competitors or settings.competitors):
-            rows = p.keyword_gaps(comp, settings.host, settings.country, settings.gap_limit)
+        for comp, rows in fetched.items():
             _replace_day(conn, keyword_gaps, day, keyword_gaps.c.competitor == comp)
             if rows:
                 conn.execute(insert(keyword_gaps), [dict(date=day, competitor=comp, **r) for r in rows])
-            print(f"Gaps: {len(rows)} keywords from {comp}", file=sys.stderr)
-            total += len(rows)
-    return total
+    return sum(len(r) for r in fetched.values())
 
 
 def pull_backlinks(day: date | None = None, provider=None) -> int:
