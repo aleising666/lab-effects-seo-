@@ -13,7 +13,7 @@ An in-house SEO tool for labeffects.com. It does three jobs on a schedule:
 
 Keyword volume and competitor data come from a plug-in provider. Out of the box
 it runs with no paid data (`KEYWORD_PROVIDER=none`). Set
-`KEYWORD_PROVIDER=dataforseo` plus an API login to rent that data per query.
+`KEYWORD_PROVIDER=ahrefs` (the workspace plan includes API units) or `dataforseo` as a fallback.
 
 ## Layout
 
@@ -24,8 +24,8 @@ seo/
   cli.py           python -m seo <command>
   crawl/           sitemap discovery, polite fetching, the checks
   gsc/             Google Search Console pull
-  keywords/        provider interface: none | dataforseo
-  market/          rank tracking, competitor gaps, backlinks (DataForSEO)
+  keywords/        provider interface: none | ahrefs | dataforseo
+  market/          rank tracking, competitor gaps, backlinks (Ahrefs or DataForSEO)
   report/          diff against the last run, PDF (reportlab), Slack upload
 tests/             fixtures and unit tests for the checks
 render.yaml        the scheduled jobs on Render
@@ -36,9 +36,9 @@ render.yaml        the scheduled jobs on Render
 ```
 python -m seo crawl            # crawl the site, store findings
 python -m seo gsc              # pull the last 3 days from Search Console
-python -m seo ranks            # every keyword we rank for, with positions (DataForSEO)
-python -m seo gaps             # keywords competitors rank for that we do not (DataForSEO)
-python -m seo backlinks        # backlink totals and referring domains (DataForSEO)
+python -m seo ranks            # every keyword we rank for, with positions
+python -m seo gaps             # keywords competitors rank for that we do not
+python -m seo backlinks        # backlink totals and referring domains
 python -m seo report           # build and post the report
 python -m seo all              # crawl, gsc, ranks, backlinks, gaps if a week old, report
 python -m seo crawl --dry-run  # crawl and print findings, store nothing
@@ -65,6 +65,13 @@ python -m seo crawl --dry-run  # crawl and print findings, store nothing
    invite the bot to the channel (`/invite @<app name>` in the channel).
    `SLACK_CHANNEL_ID` is the `C...` id at the end of the channel URL.
    If only `SLACK_WEBHOOK_URL` is set, a text summary is posted and no PDF.
+6. For rankings, gaps and backlinks: set `KEYWORD_PROVIDER=ahrefs` and paste
+   an API key from Ahrefs (Account settings -> API keys -> Generate API key)
+   into `AHREFS_API_KEY`. The Lite plan includes 200,000 API units a month and
+   returns at most 100 rows per request; the tool pages through and prices
+   keywords (volume, difficulty) only once every 30 days to stay inside that.
+   Watch Account settings -> API usage after the first few runs.
+   `KEYWORD_PROVIDER=dataforseo` with its login and password is the fallback.
 
 ## Deploying
 

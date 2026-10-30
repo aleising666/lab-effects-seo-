@@ -1,7 +1,8 @@
 """Keyword data providers.
 
 The system runs with no paid data (NoneProvider). A rented API is a
-drop-in: implement `volumes()` and register it in `get_provider()`.
+drop-in: implement `volumes()` (plus the four market methods) and register it in
+`get_provider()`. Providers: none | ahrefs (preferred, the account has API units) | dataforseo.
 """
 from dataclasses import dataclass
 from datetime import timedelta
@@ -55,6 +56,9 @@ class NoneProvider(Provider):
 
 
 def get_provider() -> Provider:
+    if settings.keyword_provider == "ahrefs":
+        from .ahrefs import AhrefsProvider
+        return AhrefsProvider()
     if settings.keyword_provider == "dataforseo":
         from .dataforseo import DataForSEOProvider
         return DataForSEOProvider()

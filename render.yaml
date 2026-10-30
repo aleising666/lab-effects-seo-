@@ -18,7 +18,9 @@ services:
       - key: GSC_PROPERTY
         value: sc-domain:labeffects.com
       - key: KEYWORD_PROVIDER
-        value: dataforseo
+        value: ahrefs
+      - key: AHREFS_API_KEY
+        sync: false
       - key: COMPETITORS
         value: trueterpenes.com,abstraxtech.com,floraplexterpenes.com
       - key: DATABASE_URL

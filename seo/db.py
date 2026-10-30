@@ -11,7 +11,7 @@ Tables:
   backlink_snapshots  backlink totals per day
   referring_domains   the domains linking to us, per day, to diff new/lost
 """
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (Column, DateTime, Float, Integer, MetaData, String, Table,
                         Text, create_engine, Date)
@@ -142,4 +142,4 @@ def engine():
 
 
 def now() -> datetime:
-    return datetime.utcnow().replace(microsecond=0)
+    return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)

@@ -26,6 +26,7 @@ class Settings:
     keyword_provider: str = _env("KEYWORD_PROVIDER", "none").lower()
     dataforseo_login: str = _env("DATAFORSEO_LOGIN")
     dataforseo_password: str = _env("DATAFORSEO_PASSWORD")
+    ahrefs_api_key: str = _env("AHREFS_API_KEY")
     # Market data (rank tracking, competitor gaps, backlinks)
     country: str = _env("COUNTRY", "us").lower()
     competitors: tuple = tuple(c.strip().lower() for c in
