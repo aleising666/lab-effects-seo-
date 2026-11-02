@@ -155,3 +155,32 @@ def test_report_groups_low_findings(tmp_path, monkeypatch):
     out = render(d, str(tmp_path / "r.pdf"))
     assert (tmp_path / "r.pdf").stat().st_size > 2000
     assert "4 open findings" in build()
+
+
+def test_report_compares_runs_by_page_and_check(tmp_path, monkeypatch):
+    """A reworded finding on the same page is the same open issue, not one
+    fixed plus one new. A finding that really disappears counts as fixed."""
+    import seo.config as cfg, seo.db as db
+    monkeypatch.setattr(cfg, "settings", cfg.Settings(database_url=f"sqlite:///{tmp_path}/t.db"))
+    monkeypatch.setattr(db, "settings", cfg.settings)
+    db._engine = None
+    import seo.crawl.run as run
+    from seo.crawl.run import crawl
+    from seo.report.build import build_data, build
+    monkeypatch.setattr(run, "polite_sleep", lambda: None)
+
+    body = "<h1>x</h1><p>" + "word " * 60 + "</p>"
+    # run 1: short title, no alt text (two low findings on one page)
+    html1 = wrap(body + "<img src='/a.png'>", title="Almond Joy – Lab Effects Shop")
+    monkeypatch.setattr(run, "fetch", lambda u: type("F", (), dict(status=200, redirect_hops=0, final_url=u, html=html1, error=""))())
+    crawl(urls=[f"{SITE}/products/a"])
+    # run 2: title reworded but still short (same issue, new message), image fixed
+    html2 = wrap(body + "<img src='/a.png' alt='Almond Joy bottle'>", title="Almond Joys – Lab Effects Shop")
+    monkeypatch.setattr(run, "fetch", lambda u: type("F", (), dict(status=200, redirect_hops=0, final_url=u, html=html2, error=""))())
+    crawl(urls=[f"{SITE}/products/a"])
+
+    c = build_data()["crawl"]
+    assert c["new"] == 0
+    assert c["fixed"] == 1
+    assert c["fixed_by_check"] == [dict(check="img-no-alt", count=1, urls=[f"{SITE}/products/a"])]
+    assert "Fixed: 1 img-no-alt." in build()

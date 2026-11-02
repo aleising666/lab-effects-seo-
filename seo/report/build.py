@@ -4,7 +4,8 @@ Report structure:
   {
     "date": "2026-10-29",
     "crawl":  {"pages": int, "open": {"high": n, "medium": n, "low": n},
-               "new": int|None, "fixed": int|None,
+               "new": int|None, "fixed": int|None,      # compared by page + check, not message text
+               "fixed_by_check": [ {check, count, urls[]} ... ],
                "items": [ {severity, check, url, message} ... ]   # new since last run, or all on first run
                "grouped_low": [ {check, count, urls[], example} ... ] },
     "gsc":    {"available": bool, "window": str, "clicks": int, "clicks_delta": str,
@@ -42,9 +43,21 @@ def crawl_data(conn) -> dict | None:
     if not cur:
         return None
     cur_f = _findings(conn, cur.id)
-    prev_fp = {f.fingerprint for f in _findings(conn, prev.id)} if prev else set()
-    cur_fp = {f.fingerprint for f in cur_f}
-    new = [f for f in cur_f if f.fingerprint not in prev_fp]
+    # Compare runs by page + check, not by message text. A finding whose
+    # wording changed (a shortened title re-flagged as still short) is the
+    # same open issue, not one fixed and one new.
+    key = lambda f: (f.url, f.check)
+    prev_f = _findings(conn, prev.id) if prev else []
+    prev_keys = {key(f) for f in prev_f}
+    cur_keys = {key(f) for f in cur_f}
+    new = [f for f in cur_f if key(f) not in prev_keys]
+    # one entry per page + check, so a page with two of the same problem counts once
+    fixed_f = list({key(f): f for f in prev_f if key(f) not in cur_keys}.values())
+    fixed_grouped: dict[str, list] = {}
+    for f in fixed_f:
+        fixed_grouped.setdefault(f.check, []).append(f)
+    fixed_by_check = [dict(check=c, count=len(fs), urls=[f.url for f in fs[:5]])
+                      for c, fs in sorted(fixed_grouped.items(), key=lambda kv: -len(kv[1]))]
     show = sorted(new if prev else cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check, f.url))
 
     items = [dict(severity=f.severity, check=f.check, url=f.url, message=f.message)
@@ -58,7 +71,8 @@ def crawl_data(conn) -> dict | None:
     return dict(
         pages=cur.pages_crawled, finished=str(cur.finished_at)[:16],
         open={s: sum(1 for f in cur_f if f.severity == s) for s in SEV_ORDER},
-        new=len(new) if prev else None, fixed=len(prev_fp - cur_fp) if prev else None,
+        new=len(new) if prev else None, fixed=len(fixed_f) if prev else None,
+        fixed_by_check=fixed_by_check,
         first_run=prev is None, items=items, grouped_low=grouped_low,
         all_open=sorted(cur_f, key=lambda f: (SEV_ORDER[f.severity], f.check, f.url)),
     )
@@ -131,6 +145,9 @@ def to_text(d: dict) -> str:
                      f"({o['high']} high, {o['medium']} medium, {o['low']} low).")
         if c["new"] is not None:
             lines.append(f"Since last run: {c['new']} new, {c['fixed']} fixed.")
+            if c["fixed_by_check"]:
+                top = ", ".join(f"{x['count']} {x['check']}" for x in c["fixed_by_check"][:4])
+                lines.append(f"Fixed: {top}.")
         for it in c["items"][:5]:
             lines.append(f"• `{it['severity']}` {it['check']} on {path_of(it['url'])}")
         if len(c["items"]) > 5:

@@ -134,6 +134,22 @@ def render(d: dict, out_path: str) -> str:
                                    ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
             story.append(t)
 
+        # Fixed since last run, grouped by problem
+        if c.get("fixed_by_check"):
+            story.append(Paragraph("Fixed since last run", H2))
+            story.append(Paragraph("Problems that were open last time and are gone now, by kind. A page counts as fixed when that kind of problem no longer appears on it.", SMALL))
+            rows = []
+            for g in c["fixed_by_check"]:
+                urls = ", ".join(_esc(path_of(u)) for u in g["urls"])
+                more = f" and {g['count'] - len(g['urls'])} more" if g["count"] > len(g["urls"]) else ""
+                rows.append([[Paragraph(f"<font color='{LEAF.hexval()}'><b>{_esc(g['check'])}</b></font> cleared on {g['count']} page(s)", P),
+                              Paragraph(f"<font color='{TEAL.hexval()}'>{urls}</font>{more}", SMALL)]])
+            t = Table(rows, colWidths=[7.0 * inch])
+            t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
+                                   ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                                   ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
+            story.append(t)
+
         # Lower priority, grouped
         if c["grouped_low"]:
             story.append(Paragraph("Lower priority, grouped by problem", H2))
